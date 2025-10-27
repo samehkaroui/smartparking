@@ -11,14 +11,3 @@
   port = 8888
   targetPort = 5173
   functionsPort = 9999
-
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
