@@ -1,8 +1,8 @@
 // Centralized API configuration
 export const API_CONFIG = {
-  // Use Netlify Functions in production, local server in development
+  // Use local server by default, Netlify Functions only when explicitly in production
   BASE_URL: import.meta.env.VITE_API_URL || 
-    (import.meta.env.PROD ? '/.netlify/functions/api' : 'http://localhost:3001/api'),
+    (window.location.hostname.includes('netlify.app') ? '/.netlify/functions/api' : 'http://localhost:3001/api'),
   
   // Endpoints
   ENDPOINTS: {
