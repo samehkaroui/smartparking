@@ -1,6 +1,6 @@
 // Netlify Function - Complete API Handler (mirrors server-simple.js)
-import express from 'express';
-import serverless from 'serverless-http';
+const express = require('express');
+const serverless = require('serverless-http');
 
 const app = express();
 app.use(express.json());
@@ -381,4 +381,4 @@ app.get('/api/stats', (req, res) => {
 });
 
 // Export as Netlify Function
-export const handler = serverless(app);
+exports.handler = serverless(app);
