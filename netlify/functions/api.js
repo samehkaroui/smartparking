@@ -41,6 +41,8 @@ const testUsers = [
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('Login attempt:', email);
+    console.log('Available users:', testUsers.map(u => u.email));
 
     if (!email || !password) {
       return res.status(400).json({ 
@@ -50,6 +52,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const user = testUsers.find(u => u.email === email);
+    console.log('User found:', user ? 'Yes' : 'No');
     
     if (!user || user.password !== password) {
       return res.status(401).json({ 
