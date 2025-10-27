@@ -1,4 +1,4 @@
-// Netlify Function - API Handler
+// Netlify Function - Complete API Handler (mirrors server-simple.js)
 const express = require('express');
 const serverless = require('serverless-http');
 
@@ -14,14 +14,7 @@ const testUsers = [
     password: 'admin123',
     role: 'admin',
     status: 'active',
-    walletBalance: 0,
-    registrationDate: new Date(),
-    lastLogin: null,
-    totalSessions: 0,
-    totalSpent: 0,
-    phone: '1234567890',
-    createdAt: new Date(),
-    updatedAt: new Date()
+    walletBalance: 0
   },
   {
     _id: 'operator-001',
@@ -30,14 +23,7 @@ const testUsers = [
     password: 'operator123',
     role: 'operator',
     status: 'active',
-    walletBalance: 0,
-    registrationDate: new Date(),
-    lastLogin: null,
-    totalSessions: 0,
-    totalSpent: 0,
-    phone: '1122334455',
-    createdAt: new Date(),
-    updatedAt: new Date()
+    walletBalance: 0
   },
   {
     _id: 'customer-001',
@@ -46,72 +32,78 @@ const testUsers = [
     password: 'customer123',
     role: 'customer',
     status: 'active',
-    walletBalance: 50.00,
-    registrationDate: new Date(),
-    lastLogin: null,
-    totalSessions: 5,
-    totalSpent: 25.50,
-    phone: '0987654321',
-    createdAt: new Date(),
-    updatedAt: new Date()
+    walletBalance: 50.00
   }
 ];
 
-// ==================== ROUTES ====================
+// ==================== AUTH ====================
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Netlify Function is running' });
-});
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-// Authentication
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Email et mot de passe requis' });
-  }
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email et mot de passe requis' 
+      });
+    }
 
-  const user = testUsers.find(u => u.email === email);
-  
-  if (!user || user.password !== password) {
-    return res.status(401).json({ success: false, error: 'Email ou mot de passe incorrect' });
-  }
+    const user = testUsers.find(u => u.email === email);
+    
+    if (!user || user.password !== password) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Email ou mot de passe incorrect' 
+      });
+    }
 
-  const token = Buffer.from(JSON.stringify({
-    userId: user._id,
-    email: user.email,
-    role: user.role,
-    name: user.name
-  })).toString('base64');
-
-  res.json({
-    success: true,
-    token,
-    user: {
-      id: user._id,
+    const token = Buffer.from(JSON.stringify({
+      userId: user._id,
       email: user.email,
       role: user.role,
-      status: user.status,
-      name: user.name,
-      walletBalance: user.walletBalance || 0
-    }
-  });
+      name: user.name
+    })).toString('base64');
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        name: user.name,
+        walletBalance: user.walletBalance
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erreur serveur' 
+    });
+  }
 });
 
-app.get('/api/auth/verify', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Token manquant' });
-  }
-
+app.get('/api/auth/verify', async (req, res) => {
   try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Token manquant' 
+      });
+    }
+
     const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
     const user = testUsers.find(u => u._id === decoded.userId);
 
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Utilisateur non trouvé' });
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Utilisateur non trouvé' 
+      });
     }
 
     res.json({
@@ -122,29 +114,25 @@ app.get('/api/auth/verify', (req, res) => {
         role: user.role,
         status: user.status,
         name: user.name,
-        walletBalance: user.walletBalance || 0
+        walletBalance: user.walletBalance
       }
     });
   } catch (error) {
-    res.status(401).json({ success: false, error: 'Token invalide' });
+    res.status(401).json({ 
+      success: false, 
+      error: 'Token invalide' 
+    });
   }
 });
 
-// Users
-app.get('/api/users', (req, res) => {
-  res.json(testUsers);
+// ==================== HEALTH ====================
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Netlify Function is running' });
 });
 
-app.get('/api/users/:id', (req, res) => {
-  const user = testUsers.find(u => u._id === req.params.id);
-  if (user) {
-    res.json(user);
-  } else {
-    res.status(404).json({ error: 'User not found' });
-  }
-});
+// ==================== SESSIONS ====================
 
-// Sessions
 app.get('/api/sessions', (req, res) => {
   res.json([]);
 });
@@ -158,7 +146,20 @@ app.post('/api/sessions', (req, res) => {
   res.status(201).json({ _id: sessionId, ...req.body });
 });
 
-// Payments
+app.put('/api/sessions/:id', (req, res) => {
+  res.json({ success: true, message: 'Session updated' });
+});
+
+app.put('/api/sessions/:id/end', (req, res) => {
+  res.json({ success: true, message: 'Session ended' });
+});
+
+app.post('/api/sessions/:id/pay', (req, res) => {
+  res.json({ success: true, message: 'Payment processed' });
+});
+
+// ==================== PAYMENTS ====================
+
 app.get('/api/payments', (req, res) => {
   res.json([]);
 });
@@ -176,9 +177,31 @@ app.get('/api/payments/stats', (req, res) => {
   res.json({ total: 0, count: 0 });
 });
 
-// Parking
+// ==================== PARKING ====================
+
 app.get('/api/parking/spaces', (req, res) => {
   res.json([]);
+});
+
+app.get('/api/parking/spaces/:number', (req, res) => {
+  res.json({ 
+    number: req.params.number, 
+    status: 'libre',
+    zone: 'A',
+    type: 'voiture'
+  });
+});
+
+app.post('/api/parking/reserve', (req, res) => {
+  res.json({ success: true, message: 'Space reserved' });
+});
+
+app.post('/api/parking/occupy', (req, res) => {
+  res.json({ success: true, message: 'Space occupied' });
+});
+
+app.post('/api/parking/free', (req, res) => {
+  res.json({ success: true, message: 'Space freed' });
 });
 
 app.post('/api/parking/generate-spaces', (req, res) => {
@@ -213,36 +236,49 @@ app.post('/api/parking/generate-spaces', (req, res) => {
 });
 
 app.post('/api/parking/cleanup-expired', (req, res) => {
-  res.json({ success: true, message: 'Réservations nettoyées', cleaned: 0 });
+  res.json({ 
+    success: true, 
+    message: 'Réservations expirées nettoyées',
+    cleaned: 0
+  });
 });
 
-app.post('/api/parking/reserve', (req, res) => {
-  res.json({ success: true, message: 'Space reserved' });
-});
+// ==================== NOTIFICATIONS ====================
 
-app.post('/api/parking/occupy', (req, res) => {
-  res.json({ success: true, message: 'Space occupied' });
-});
-
-app.post('/api/parking/free', (req, res) => {
-  res.json({ success: true, message: 'Space freed' });
-});
-
-// Notifications
 app.get('/api/notifications', (req, res) => {
   res.json([]);
+});
+
+app.post('/api/notifications', (req, res) => {
+  const notificationId = Date.now().toString();
+  res.status(201).json({ _id: notificationId, ...req.body });
 });
 
 app.get('/api/notifications/unread', (req, res) => {
   res.json([]);
 });
 
-// Alerts
+app.patch('/api/notifications/:id/read', (req, res) => {
+  res.json({ success: true, message: 'Notification marked as read' });
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  res.json({ success: true, message: 'Notification deleted' });
+});
+
+// ==================== ALERTS ====================
+
 app.get('/api/alerts', (req, res) => {
   res.json({ alerts: [] });
 });
 
-// Settings
+app.post('/api/alerts', (req, res) => {
+  const alertId = Date.now().toString();
+  res.status(201).json({ _id: alertId, ...req.body });
+});
+
+// ==================== SETTINGS ====================
+
 app.get('/api/settings', (req, res) => {
   res.json({
     success: true,
@@ -259,7 +295,70 @@ app.post('/api/settings', (req, res) => {
   res.json({ success: true, message: 'Settings saved' });
 });
 
-// Stats
+app.get('/api/config/parking', (req, res) => {
+  res.json({
+    totalSpaces: 100,
+    baseRate: 2.5,
+    dynamicPricing: true
+  });
+});
+
+app.put('/api/config/parking', (req, res) => {
+  res.json({ success: true, message: 'Config updated' });
+});
+
+// ==================== USERS ====================
+
+app.get('/api/users', (req, res) => {
+  res.json(testUsers);
+});
+
+app.get('/api/users/:id', (req, res) => {
+  const user = testUsers.find(u => u._id === req.params.id);
+  if (user) {
+    res.json(user);
+  } else {
+    res.status(404).json({ error: 'User not found' });
+  }
+});
+
+app.post('/api/users', (req, res) => {
+  const userId = Date.now().toString();
+  const newUser = { _id: userId, ...req.body };
+  res.status(201).json(newUser);
+});
+
+app.put('/api/users/:id', (req, res) => {
+  res.json({ success: true, message: 'User updated' });
+});
+
+app.delete('/api/users/:id', (req, res) => {
+  res.json({ success: true, message: 'User deleted' });
+});
+
+// ==================== TRANSACTIONS ====================
+
+app.get('/api/transactions', (req, res) => {
+  res.json([]);
+});
+
+app.post('/api/transactions', (req, res) => {
+  const transactionId = Date.now().toString();
+  res.status(201).json({ _id: transactionId, ...req.body });
+});
+
+// ==================== REPORTS ====================
+
+app.post('/api/reports/pdf', (req, res) => {
+  res.json({ success: true, message: 'PDF report generated' });
+});
+
+app.get('/api/reports/csv', (req, res) => {
+  res.json({ success: true, message: 'CSV report generated' });
+});
+
+// ==================== STATS ====================
+
 app.get('/api/stats', (req, res) => {
   res.json({
     spaces: {
@@ -276,11 +375,6 @@ app.get('/api/stats', (req, res) => {
     },
     timestamp: new Date()
   });
-});
-
-// Transactions
-app.get('/api/transactions', (req, res) => {
-  res.json([]);
 });
 
 // Export as Netlify Function
