@@ -6,6 +6,9 @@
 [build.environment]
   NODE_VERSION = "18"
 
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core"
+
 [dev]
   command = "npm run dev"
   port = 8888
