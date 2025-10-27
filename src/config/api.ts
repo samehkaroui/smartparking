@@ -2,7 +2,7 @@
 export const API_CONFIG = {
   // Always use Netlify Functions on netlify.app domain
   BASE_URL: window.location.hostname.includes('netlify.app') 
-    ? '/api' 
+    ? '/.netlify/functions/api' 
     : (import.meta.env.VITE_API_URL || 'http://localhost:3001/api'),
   
   // Endpoints
