@@ -389,8 +389,9 @@ app.get('/api/stats', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Serveur Express démarré sur http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Serveur Express démarré sur http://0.0.0.0:${PORT}`);
+  console.log(`📡 Accessible sur le réseau local`);
   console.log('📋 Utilisateurs de test disponibles:');
   testUsers.forEach(user => {
     console.log(`   - ${user.email} / ${user.password} (${user.role})`);
