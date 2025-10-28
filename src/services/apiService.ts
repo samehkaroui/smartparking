@@ -3,7 +3,7 @@ import { API_CONFIG, buildApiUrl, apiRequest } from '../config/api';
 
 export const apiService = {
   // Sessions - CORRECTION DES PROBLÈMES DE TEMPS
-  async getSessions(): Promise<any[]> {
+  async getSessions(): Promise<unknown[]> {
     try {
       const response = await apiRequest(API_CONFIG.ENDPOINTS.SESSIONS.BASE);
       if (!response.ok) {
@@ -16,15 +16,15 @@ export const apiService = {
       const sessions = Array.isArray(data) ? data : data.data || data.sessions || [];
       
       // CORRECTION: Nettoyer et formater les dates
-      return sessions.map(session => this.formatSessionDates(session));
-    } catch (error) {
+      return sessions.map((session: unknown) => this.formatSessionDates(session as Record<string, unknown>));
+    } catch (error: unknown) {
       console.error('❌ Erreur getSessions:', error);
       return this.getMockSessions();
     }
   },
 
   // CORRECTION: Fonction pour formater les dates des sessions
-  formatSessionDates(session: any): any {
+  formatSessionDates(session: Record<string, unknown>): Record<string, unknown> {
     const formatted = { ...session };
     
     // CORRECTION: Utiliser startTime/endTime au lieu de entryTime/exitTime
@@ -37,7 +37,7 @@ export const apiService = {
     
     // CORRECTION: S'assurer que les dates sont valides
     if (formatted.entryTime) {
-      const entryDate = new Date(formatted.entryTime);
+      const entryDate = new Date(formatted.entryTime as string);
       if (isNaN(entryDate.getTime())) {
         console.warn('Date d\'entrée invalide:', formatted.entryTime);
         formatted.entryTime = new Date().toISOString();
@@ -45,7 +45,7 @@ export const apiService = {
     }
     
     if (formatted.exitTime) {
-      const exitDate = new Date(formatted.exitTime);
+      const exitDate = new Date(formatted.exitTime as string);
       if (isNaN(exitDate.getTime())) {
         console.warn('Date de sortie invalide:', formatted.exitTime);
         formatted.exitTime = null;
@@ -55,15 +55,16 @@ export const apiService = {
     return formatted;
   },
 
-  async createSession(sessionData: any): Promise<any> {
+  async createSession(sessionData: Record<string, unknown>): Promise<unknown> {
     try {
       // CORRECTION: Utiliser une date fixe pour l'entrée
       const entryTime = new Date().toISOString();
       
+      const vehicle = sessionData.vehicle as Record<string, unknown>;
       const backendData = {
         vehicle: {
-          plate: sessionData.vehicle.plate,
-          type: sessionData.vehicle.type,
+          plate: vehicle.plate,
+          type: vehicle.type,
           model: "",
           color: ""
         },
@@ -100,14 +101,14 @@ export const apiService = {
       console.log('✅ Session créée avec succès:', result);
       return this.formatSessionDates(result); // CORRECTION: Formater les dates
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Erreur createSession:', error);
       throw error;
     }
   },
 
   // CORRECTION de la fonction endSession
-async endSession(sessionId: string, data: any): Promise<any> {
+async endSession(sessionId: string, data: Record<string, unknown>): Promise<unknown> {
   try {
     // CORRECTION: Utiliser une date fixe pour la sortie
     const exitTime = new Date().toISOString();
@@ -166,7 +167,7 @@ async endSession(sessionId: string, data: any): Promise<any> {
     const result = await response.json();
     console.log('✅ Session terminée avec succès:', result);
     return this.formatSessionDates(result);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ Erreur endSession:', error);
     throw error;
   }
@@ -174,7 +175,7 @@ async endSession(sessionId: string, data: any): Promise<any> {
 
   
 // CORRECTION de la fonction processPayment
-async processPayment(sessionId: string, paymentData: any): Promise<any> {
+async processPayment(sessionId: string, paymentData: Record<string, unknown>): Promise<unknown> {
   try {
     // CORRECTION: Utiliser une date fixe
     const paymentTime = new Date().toISOString();
@@ -186,7 +187,6 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
     });
 
     // CORRECTION: Essayer différents endpoints pour le paiement
-    let paymentResponse;
     let sessionResponse;
 
     // 1. Essayer de créer le paiement d'abord
@@ -201,7 +201,7 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
     console.log('📤 Création du paiement:', payment);
 
     // Essayer l'endpoint payments
-    paymentResponse = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PAYMENTS.BASE), {
+    const paymentResponse = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PAYMENTS.BASE), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payment)
@@ -295,7 +295,7 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
   }
 },
   // Parking Spaces
-  async getParkingSpaces(): Promise<any[]> {
+  async getParkingSpaces(): Promise<unknown[]> {
     try {
       const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.SPACES));
       if (!response.ok) {
@@ -304,13 +304,13 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
       }
       const data = await response.json();
       return Array.isArray(data) ? data : data.data || data.spaces || [];
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Erreur getParkingSpaces:', error);
       return this.getMockParkingSpaces();
     }
   },
 
-  async updateParkingSpace(spaceId: string, updates: any): Promise<any> {
+  async updateParkingSpace(spaceId: string, updates: Record<string, unknown>): Promise<unknown> {
     try {
       const response = await fetch(buildApiUrl(`/parking-spaces/${spaceId}`), {
         method: 'PUT',
@@ -322,31 +322,31 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
       });
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       return response.json();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Erreur updateParkingSpace:', error);
       throw error;
     }
   },
 
-  async updateParkingSpaceByNumber(spaceNumber: string, updates: any): Promise<any> {
+  async updateParkingSpaceByNumber(spaceNumber: string, updates: Record<string, unknown>): Promise<unknown> {
     try {
       // Chercher d'abord l'espace par son numéro
       const spaces = await this.getParkingSpaces();
-      const space = spaces.find(s => s.number === spaceNumber);
+      const space = spaces.find((s: unknown) => (s as Record<string, unknown>).number === spaceNumber) as Record<string, unknown> | undefined;
       
       if (!space) {
         throw new Error(`Place ${spaceNumber} non trouvée`);
       }
 
-      return this.updateParkingSpace(space._id || space.id, updates);
-    } catch (error) {
+      return this.updateParkingSpace((space._id || space.id) as string, updates);
+    } catch (error: unknown) {
       console.error('❌ Erreur updateParkingSpaceByNumber:', error);
       throw error;
     }
   },
 
   // Notifications (Alerts)
-  async createNotification(notification: any): Promise<any> {
+  async createNotification(notification: Record<string, unknown>): Promise<unknown> {
     try {
       const alertData = {
         type: notification.type || 'info',
@@ -373,14 +373,14 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
         return { success: false, message: 'Endpoint non disponible' };
       }
       return response.json();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Erreur createNotification:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 
   // Données mock pour développement
-  getMockSessions(): any[] {
+  getMockSessions(): unknown[] {
     console.log('📋 Utilisation des données mock pour sessions');
     
     // CORRECTION: Dates cohérentes dans les mocks
@@ -425,7 +425,7 @@ async processPayment(sessionId: string, paymentData: any): Promise<any> {
     ];
   },
 
-  getMockParkingSpaces(): any[] {
+  getMockParkingSpaces(): unknown[] {
     console.log('📋 Utilisation des données mock pour parking-spaces');
     const spaces = [];
     const types = ['voiture', 'camion', 'moto'];

@@ -28,7 +28,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
     try {
     // Utilisez l'API Express server
-    const res = await fetch("http://localhost:3001/api/auth/login", {
+    const res = await fetch("http://localhost:3002/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })

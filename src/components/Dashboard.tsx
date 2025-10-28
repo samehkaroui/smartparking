@@ -104,15 +104,15 @@ const Dashboard: React.FC = () => {
       setLoading(true);
 
       // Charger les statistiques globales
-      const statsResponse = await fetch('http://localhost:3001/api/stats');
+      const statsResponse = await fetch('http://localhost:3002/api/stats');
       const statsData: StatsResponse = await statsResponse.json();
 
       // Charger les sessions actives
-      const sessionsResponse = await fetch('http://localhost:3001/api/sessions?status=active&limit=10');
+      const sessionsResponse = await fetch('http://localhost:3002/api/sessions?status=active&limit=10');
       const sessionsData = await sessionsResponse.json();
 
       // Charger les alertes récentes
-      const alertsResponse = await fetch('http://localhost:3001/api/alerts?limit=3');
+      const alertsResponse = await fetch('http://localhost:3002/api/alerts?limit=3');
       const alertsData = await alertsResponse.json();
 
       // Calculer les revenus du jour (à adapter selon votre logique)

@@ -15,7 +15,7 @@ export const parkingSessionService = {
 
   subscribeToActiveSessions(callback: (sessions: ParkingSession[]) => void): () => void {
     // Implémentation WebSocket pour le temps réel
-    const ws = new WebSocket(`${process.env.REACT_APP_WS_URL || 'ws://localhost:3001'}/sessions`);
+    const ws = new WebSocket(`${process.env.REACT_APP_WS_URL || 'ws://localhost:3002'}/sessions`);
     
     ws.onopen = () => console.log('WebSocket connected for sessions');
     ws.onmessage = (event) => {

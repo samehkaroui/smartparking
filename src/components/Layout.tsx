@@ -108,7 +108,7 @@ const Layout: React.FC<LayoutProps> = ({ onSignOut }) => {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/alerts?limit=10');
+        const response = await fetch('http://localhost:3002/api/alerts?limit=10');
         if (response.ok) {
           const data = await response.json();
           const notificationsData: Notification[] = data.alerts.map((alert: any) => ({
@@ -152,7 +152,7 @@ const Layout: React.FC<LayoutProps> = ({ onSignOut }) => {
   // Marquer une notification comme lue
   const markAsRead = async (notificationId: string) => {
     try {
-      await fetch(`http://localhost:3001/api/alerts/${notificationId}/read`, {
+      await fetch(`http://localhost:3002/api/alerts/${notificationId}/read`, {
         method: 'PUT'
       });
       

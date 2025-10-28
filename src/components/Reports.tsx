@@ -30,7 +30,7 @@ interface Payment {
 
 // Configuration robuste avec fallbacks
 const getApiBaseUrl = (): string => {
-  return 'http://localhost:3001/api';
+  return 'http://localhost:3002/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();

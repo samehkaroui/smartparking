@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 // Configuration MongoDB
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smartparking';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://samhkaroui_db_user:44605775@parking.rgvpb46.mongodb.net/?appName=parking';
 let client;
 let db;
 let isMongoConnected = false;
@@ -84,13 +84,31 @@ async function connectDB() {
   try {
     console.log('🔄 Tentative de connexion à MongoDB...');
     client = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000, // Timeout de 5 secondes
-      connectTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      retryWrites: true,
+      retryReads: true,
+      tls: true,
+      tlsAllowInvalidCertificates: true,
+      tlsAllowInvalidHostnames: true,
     });
     
     await client.connect();
     db = client.db('smartparking');
     isMongoConnected = true;
+    
+    // Gérer les événements de connexion
+    client.on('serverHeartbeatFailed', () => {
+      console.warn('⚠️ MongoDB heartbeat failed - connection may be unstable');
+    });
+    
+    client.on('close', () => {
+      console.warn('⚠️ MongoDB connection closed');
+      isMongoConnected = false;
+    });
     
     console.log('✅ Connecté à MongoDB');
     
@@ -149,16 +167,28 @@ async function initializeData() {
   }
 }
 
-// Middleware pour vérifier la connexion DB
+// Middleware pour vérifier la connexion DB (optionnel - ne bloque plus les requêtes)
 function requireDB(req, res, next) {
-  if (!isMongoConnected) {
-    return res.status(503).json({
-      success: false,
-      error: 'Base de données non disponible. Utilisez le serveur simple à la place.',
-      fallbackUrl: 'http://localhost:3001'
-    });
-  }
+  // Ne plus bloquer les requêtes - juste passer au suivant
+  // Les routes individuelles géreront le mode fallback
   next();
+}
+
+// Helper function to handle MongoDB operations with automatic fallback
+async function safeMongoOperation(operation, fallbackValue = null) {
+  if (!isMongoConnected) {
+    return fallbackValue;
+  }
+  
+  try {
+    return await operation();
+  } catch (error) {
+    if (error.name === 'MongoNetworkError' || error.name === 'MongoTimeoutError') {
+      console.warn('⚠️ MongoDB connection lost, switching to fallback mode');
+      isMongoConnected = false;
+    }
+    return fallbackValue;
+  }
 }
 
 // ==================== ROUTES AUTHENTIFICATION ====================
@@ -729,28 +759,45 @@ app.delete('/api/notifications/:id', requireDB, async (req, res) => {
 
 // ==================== ROUTES SESSIONS ====================
 
+// In-memory sessions for fallback mode
+const fallbackSessions = [];
+
 app.get('/api/sessions', requireDB, async (req, res) => {
   try {
-    const sessionsCollection = db.collection('sessions');
-    const sessions = await sessionsCollection.find({})
-      .sort({ startTime: -1 })
-      .toArray();
-
-    res.json(sessions);
+    if (isMongoConnected) {
+      try {
+        const sessionsCollection = db.collection('sessions');
+        const sessions = await sessionsCollection.find({})
+          .sort({ startTime: -1 })
+          .toArray();
+        return res.json(sessions);
+      } catch (mongoError) {
+        console.warn('⚠️ MongoDB error, switching to fallback:', mongoError.message);
+        isMongoConnected = false;
+        return res.json(fallbackSessions);
+      }
+    }
+    
+    // Fallback mode
+    res.json(fallbackSessions);
   } catch (error) {
     console.error('❌ Erreur récupération sessions:', error);
-    res.status(500).json({ error: error.message });
+    res.json(fallbackSessions); // Return fallback data instead of error
   }
 });
 
 app.get('/api/sessions/active', requireDB, async (req, res) => {
   try {
-    const sessionsCollection = db.collection('sessions');
-    const sessions = await sessionsCollection.find({ status: 'active' })
-      .sort({ startTime: -1 })
-      .toArray();
-
-    res.json(sessions);
+    if (isMongoConnected) {
+      const sessionsCollection = db.collection('sessions');
+      const sessions = await sessionsCollection.find({ status: 'active' })
+        .sort({ startTime: -1 })
+        .toArray();
+      return res.json(sessions);
+    }
+    
+    // Fallback mode
+    res.json(fallbackSessions.filter(s => s.status === 'active'));
   } catch (error) {
     console.error('❌ Erreur récupération sessions actives:', error);
     res.status(500).json({ error: error.message });
@@ -760,18 +807,24 @@ app.get('/api/sessions/active', requireDB, async (req, res) => {
 app.post('/api/sessions', requireDB, async (req, res) => {
   try {
     const sessionData = req.body;
-    
-    const sessionsCollection = db.collection('sessions');
     const newSession = {
       ...sessionData,
       status: 'active',
       createdAt: new Date(),
       updatedAt: new Date()
     };
-
-    const result = await sessionsCollection.insertOne(newSession);
-    const savedSession = { _id: result.insertedId, ...newSession };
     
+    if (isMongoConnected) {
+      const sessionsCollection = db.collection('sessions');
+      const result = await sessionsCollection.insertOne(newSession);
+      const savedSession = { _id: result.insertedId, ...newSession };
+      return res.status(201).json(savedSession);
+    }
+    
+    // Fallback mode
+    const sessionId = Date.now().toString();
+    const savedSession = { _id: sessionId, ...newSession };
+    fallbackSessions.push(savedSession);
     res.status(201).json(savedSession);
   } catch (error) {
     console.error('❌ Erreur création session:', error);
@@ -783,18 +836,21 @@ app.get('/api/sessions/:id', requireDB, async (req, res) => {
   try {
     const { id } = req.params;
     
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'ID session invalide' });
+    if (isMongoConnected && ObjectId.isValid(id)) {
+      const sessionsCollection = db.collection('sessions');
+      const session = await sessionsCollection.findOne({ _id: new ObjectId(id) });
+      if (session) {
+        return res.json({ success: true, session });
+      }
     }
-
-    const sessionsCollection = db.collection('sessions');
-    const session = await sessionsCollection.findOne({ _id: new ObjectId(id) });
-
-    if (!session) {
-      return res.status(404).json({ error: 'Session non trouvée' });
+    
+    // Fallback mode
+    const session = fallbackSessions.find(s => s._id === id);
+    if (session) {
+      return res.json({ success: true, session });
     }
-
-    res.json({ success: true, session });
+    
+    res.status(404).json({ error: 'Session non trouvée' });
   } catch (error) {
     console.error('❌ Erreur récupération session:', error);
     res.status(500).json({ error: error.message });
@@ -806,17 +862,27 @@ app.put('/api/sessions/:id', requireDB, async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'ID session invalide' });
+    if (isMongoConnected && ObjectId.isValid(id)) {
+      const sessionsCollection = db.collection('sessions');
+      await sessionsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { ...updates, updatedAt: new Date() } }
+      );
+      return res.json({ success: true, message: 'Session mise à jour' });
     }
-
-    const sessionsCollection = db.collection('sessions');
-    await sessionsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { ...updates, updatedAt: new Date() } }
-    );
-
-    res.json({ success: true, message: 'Session mise à jour' });
+    
+    // Fallback mode
+    const sessionIndex = fallbackSessions.findIndex(s => s._id === id);
+    if (sessionIndex !== -1) {
+      fallbackSessions[sessionIndex] = { 
+        ...fallbackSessions[sessionIndex], 
+        ...updates, 
+        updatedAt: new Date() 
+      };
+      return res.json({ success: true, message: 'Session mise à jour' });
+    }
+    
+    res.status(404).json({ error: 'Session non trouvée' });
   } catch (error) {
     console.error('❌ Erreur mise à jour session:', error);
     res.status(500).json({ error: error.message });
@@ -827,17 +893,25 @@ app.put('/api/sessions/:id/end', requireDB, async (req, res) => {
   try {
     const { id } = req.params;
     
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'ID session invalide' });
+    if (isMongoConnected && ObjectId.isValid(id)) {
+      const sessionsCollection = db.collection('sessions');
+      await sessionsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: 'completed', endTime: new Date(), updatedAt: new Date() } }
+      );
+      return res.json({ success: true, message: 'Session terminée' });
     }
-
-    const sessionsCollection = db.collection('sessions');
-    await sessionsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status: 'completed', endTime: new Date(), updatedAt: new Date() } }
-    );
-
-    res.json({ success: true, message: 'Session terminée' });
+    
+    // Fallback mode
+    const sessionIndex = fallbackSessions.findIndex(s => s._id === id);
+    if (sessionIndex !== -1) {
+      fallbackSessions[sessionIndex].status = 'completed';
+      fallbackSessions[sessionIndex].endTime = new Date();
+      fallbackSessions[sessionIndex].updatedAt = new Date();
+      return res.json({ success: true, message: 'Session terminée' });
+    }
+    
+    res.status(404).json({ error: 'Session non trouvée' });
   } catch (error) {
     console.error('❌ Erreur fin session:', error);
     res.status(500).json({ error: error.message });
@@ -849,17 +923,26 @@ app.post('/api/sessions/:id/pay', requireDB, async (req, res) => {
     const { id } = req.params;
     const { amount, paymentMethod } = req.body;
     
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'ID session invalide' });
+    if (isMongoConnected && ObjectId.isValid(id)) {
+      const sessionsCollection = db.collection('sessions');
+      await sessionsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { paymentStatus: 'paid', amount, paymentMethod, updatedAt: new Date() } }
+      );
+      return res.json({ success: true, message: 'Paiement enregistré' });
     }
-
-    const sessionsCollection = db.collection('sessions');
-    await sessionsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { paymentStatus: 'paid', amount, paymentMethod, updatedAt: new Date() } }
-    );
-
-    res.json({ success: true, message: 'Paiement enregistré' });
+    
+    // Fallback mode
+    const sessionIndex = fallbackSessions.findIndex(s => s._id === id);
+    if (sessionIndex !== -1) {
+      fallbackSessions[sessionIndex].paymentStatus = 'paid';
+      fallbackSessions[sessionIndex].amount = amount;
+      fallbackSessions[sessionIndex].paymentMethod = paymentMethod;
+      fallbackSessions[sessionIndex].updatedAt = new Date();
+      return res.json({ success: true, message: 'Paiement enregistré' });
+    }
+    
+    res.status(404).json({ error: 'Session non trouvée' });
   } catch (error) {
     console.error('❌ Erreur paiement session:', error);
     res.status(500).json({ error: error.message });
@@ -868,14 +951,20 @@ app.post('/api/sessions/:id/pay', requireDB, async (req, res) => {
 
 // ==================== ROUTES PAYMENTS ====================
 
+// In-memory payments for fallback mode
+const fallbackPayments = [];
+
 app.get('/api/payments', requireDB, async (req, res) => {
   try {
-    const paymentsCollection = db.collection('payments');
-    const payments = await paymentsCollection.find({})
-      .sort({ paymentTime: -1 })
-      .toArray();
-
-    res.json(payments);
+    if (isMongoConnected) {
+      const paymentsCollection = db.collection('payments');
+      const payments = await paymentsCollection.find({})
+        .sort({ paymentTime: -1 })
+        .toArray();
+      return res.json(payments);
+    }
+    
+    res.json(fallbackPayments);
   } catch (error) {
     console.error('❌ Erreur récupération paiements:', error);
     res.status(500).json({ error: error.message });
@@ -890,9 +979,8 @@ app.post('/api/payments', requireDB, async (req, res) => {
       return res.status(400).json({ error: 'Données manquantes' });
     }
 
-    const paymentsCollection = db.collection('payments');
     const newPayment = {
-      sessionId: new ObjectId(sessionId),
+      sessionId,
       amount: parseFloat(amount),
       paymentMethod,
       status: 'completed',
@@ -901,8 +989,17 @@ app.post('/api/payments', requireDB, async (req, res) => {
       updatedAt: new Date()
     };
 
-    const result = await paymentsCollection.insertOne(newPayment);
-    res.status(201).json({ _id: result.insertedId, ...newPayment });
+    if (isMongoConnected) {
+      const paymentsCollection = db.collection('payments');
+      newPayment.sessionId = new ObjectId(sessionId);
+      const result = await paymentsCollection.insertOne(newPayment);
+      return res.status(201).json({ _id: result.insertedId, ...newPayment });
+    }
+    
+    const paymentId = Date.now().toString();
+    const savedPayment = { _id: paymentId, ...newPayment };
+    fallbackPayments.push(savedPayment);
+    res.status(201).json(savedPayment);
   } catch (error) {
     console.error('❌ Erreur création paiement:', error);
     res.status(500).json({ error: error.message });
@@ -934,8 +1031,14 @@ app.get('/api/payments/reports', requireDB, async (req, res) => {
 
 app.get('/api/payments/stats', requireDB, async (req, res) => {
   try {
-    const paymentsCollection = db.collection('payments');
-    const payments = await paymentsCollection.find({}).toArray();
+    let payments = [];
+    
+    if (isMongoConnected) {
+      const paymentsCollection = db.collection('payments');
+      payments = await paymentsCollection.find({}).toArray();
+    } else {
+      payments = fallbackPayments;
+    }
     
     const total = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
     const count = payments.length;
@@ -951,9 +1054,12 @@ app.get('/api/payments/stats', requireDB, async (req, res) => {
 
 app.get('/api/parking/spaces', requireDB, async (req, res) => {
   try {
-    const spacesCollection = db.collection('parkingSpaces');
-    const spaces = await spacesCollection.find({}).toArray();
-    res.json(spaces);
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      const spaces = await spacesCollection.find({}).toArray();
+      return res.json(spaces);
+    }
+    res.json(fallbackParkingSpaces);
   } catch (error) {
     console.error('❌ Erreur récupération places:', error);
     res.status(500).json({ error: error.message });
@@ -964,11 +1070,19 @@ app.post('/api/parking/reserve', requireDB, async (req, res) => {
   try {
     const { spaceNumber, plate, vehicleType } = req.body;
     
-    const spacesCollection = db.collection('parkingSpaces');
-    await spacesCollection.updateOne(
-      { number: spaceNumber },
-      { $set: { status: 'réservé', reservation: { plate, vehicleType, time: new Date() } } }
-    );
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      await spacesCollection.updateOne(
+        { number: spaceNumber },
+        { $set: { status: 'réservé', reservation: { plate, vehicleType, time: new Date() } } }
+      );
+    } else {
+      const space = fallbackParkingSpaces.find(s => s.number === spaceNumber);
+      if (space) {
+        space.status = 'réservé';
+        space.reservation = { plate, vehicleType, time: new Date() };
+      }
+    }
 
     res.json({ success: true, message: 'Place réservée' });
   } catch (error) {
@@ -981,11 +1095,19 @@ app.post('/api/parking/occupy', requireDB, async (req, res) => {
   try {
     const { spaceNumber } = req.body;
     
-    const spacesCollection = db.collection('parkingSpaces');
-    await spacesCollection.updateOne(
-      { number: spaceNumber },
-      { $set: { status: 'occupé', updatedAt: new Date() } }
-    );
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      await spacesCollection.updateOne(
+        { number: spaceNumber },
+        { $set: { status: 'occupé', updatedAt: new Date() } }
+      );
+    } else {
+      const space = fallbackParkingSpaces.find(s => s.number === spaceNumber);
+      if (space) {
+        space.status = 'occupé';
+        space.updatedAt = new Date();
+      }
+    }
 
     res.json({ success: true, message: 'Place occupée' });
   } catch (error) {
@@ -998,11 +1120,20 @@ app.post('/api/parking/free', requireDB, async (req, res) => {
   try {
     const { spaceNumber } = req.body;
     
-    const spacesCollection = db.collection('parkingSpaces');
-    await spacesCollection.updateOne(
-      { number: spaceNumber },
-      { $set: { status: 'libre', reservation: null, updatedAt: new Date() } }
-    );
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      await spacesCollection.updateOne(
+        { number: spaceNumber },
+        { $set: { status: 'libre', reservation: null, updatedAt: new Date() } }
+      );
+    } else {
+      const space = fallbackParkingSpaces.find(s => s.number === spaceNumber);
+      if (space) {
+        space.status = 'libre';
+        space.reservation = null;
+        space.updatedAt = new Date();
+      }
+    }
 
     res.json({ success: true, message: 'Place libérée' });
   } catch (error) {
@@ -1092,13 +1223,16 @@ app.put('/api/config/parking', requireDB, async (req, res) => {
 
 app.get('/api/alerts', requireDB, async (req, res) => {
   try {
-    const alertsCollection = db.collection('alerts');
-    const alerts = await alertsCollection.find({})
-      .sort({ timestamp: -1 })
-      .limit(10)
-      .toArray();
-
-    res.json({ alerts });
+    if (isMongoConnected) {
+      const alertsCollection = db.collection('alerts');
+      const alerts = await alertsCollection.find({})
+        .sort({ timestamp: -1 })
+        .limit(10)
+        .toArray();
+      return res.json({ alerts });
+    }
+    
+    res.json({ alerts: [] });
   } catch (error) {
     console.error('❌ Erreur récupération alertes:', error);
     res.status(500).json({ error: error.message });
@@ -1128,24 +1262,40 @@ app.post('/api/alerts', requireDB, async (req, res) => {
 
 app.get('/api/stats', requireDB, async (req, res) => {
   try {
-    const spacesCollection = db.collection('parkingSpaces');
-    const sessionsCollection = db.collection('sessions');
+    let totalSpaces, freeSpaces, occupiedSpaces, reservedSpaces, todaySessions, activeSessions;
     
-    const totalSpaces = await spacesCollection.countDocuments();
-    const freeSpaces = await spacesCollection.countDocuments({ status: 'libre' });
-    const occupiedSpaces = await spacesCollection.countDocuments({ status: 'occupé' });
-    const reservedSpaces = await spacesCollection.countDocuments({ status: 'réservé' });
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const todaySessions = await sessionsCollection.countDocuments({
-      startTime: { $gte: today }
-    });
-    
-    const activeSessions = await sessionsCollection.countDocuments({
-      status: 'active'
-    });
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      const sessionsCollection = db.collection('sessions');
+      
+      totalSpaces = await spacesCollection.countDocuments();
+      freeSpaces = await spacesCollection.countDocuments({ status: 'libre' });
+      occupiedSpaces = await spacesCollection.countDocuments({ status: 'occupé' });
+      reservedSpaces = await spacesCollection.countDocuments({ status: 'réservé' });
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      todaySessions = await sessionsCollection.countDocuments({
+        startTime: { $gte: today }
+      });
+      
+      activeSessions = await sessionsCollection.countDocuments({
+        status: 'active'
+      });
+    } else {
+      // Fallback mode - calculate from in-memory data
+      totalSpaces = fallbackParkingSpaces.length;
+      freeSpaces = fallbackParkingSpaces.filter(s => s.status === 'libre').length;
+      occupiedSpaces = fallbackParkingSpaces.filter(s => s.status === 'occupé').length;
+      reservedSpaces = fallbackParkingSpaces.filter(s => s.status === 'réservé').length;
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      todaySessions = fallbackSessions.filter(s => new Date(s.startTime) >= today).length;
+      activeSessions = fallbackSessions.filter(s => s.status === 'active').length;
+    }
 
     res.json({
       spaces: {
@@ -1195,6 +1345,108 @@ app.use((error, req, res, next) => {
   });
 });
 
+// ==================== ROUTES PARKING SPACES (FALLBACK) ====================
+
+// Route pour générer des places de parking (fallback mode)
+app.post('/api/parking/generate-spaces', async (req, res) => {
+  try {
+    const { totalSpaces } = req.body;
+    console.log(`🏗️ Génération de ${totalSpaces} places de parking`);
+    
+    const spaces = [];
+    const zones = ['A', 'B', 'C', 'D'];
+    const types = ['voiture', 'moto', 'camion'];
+    
+    for (let i = 1; i <= totalSpaces; i++) {
+      const zone = zones[Math.floor(Math.random() * zones.length)];
+      const type = types[Math.floor(Math.random() * types.length)];
+      const number = `${zone}${String(i).padStart(3, '0')}`;
+      
+      spaces.push({
+        number,
+        zone,
+        type,
+        vehicleType: type,
+        status: 'libre',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+    
+    // Si MongoDB est connecté, sauvegarder dans la base
+    if (isMongoConnected && spaces.length > 0) {
+      try {
+        const spacesCollection = db.collection('parkingSpaces');
+        await spacesCollection.deleteMany({}); // Nettoyer les anciennes places
+        await spacesCollection.insertMany(spaces);
+        console.log(`✅ ${totalSpaces} places sauvegardées dans MongoDB`);
+      } catch (dbError) {
+        console.warn('⚠️ Erreur sauvegarde MongoDB:', dbError.message);
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `${totalSpaces} places créées avec succès`,
+      spaces: spaces.length,
+      data: spaces
+    });
+  } catch (error) {
+    console.error('❌ Erreur génération places:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/parking/spaces/:number', async (req, res) => {
+  try {
+    const { number } = req.params;
+    
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      const space = await spacesCollection.findOne({ number });
+      if (space) {
+        return res.json(space);
+      }
+    }
+    
+    // Fallback
+    res.json({ 
+      number, 
+      status: 'libre',
+      zone: 'A',
+      type: 'voiture'
+    });
+  } catch (error) {
+    console.error('❌ Erreur récupération place:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/parking/cleanup-expired', async (req, res) => {
+  try {
+    console.log('🧹 Nettoyage des réservations expirées');
+    
+    let cleaned = 0;
+    if (isMongoConnected) {
+      const spacesCollection = db.collection('parkingSpaces');
+      const result = await spacesCollection.updateMany(
+        { status: 'réservé', 'reservation.time': { $lt: new Date(Date.now() - 30 * 60 * 1000) } },
+        { $set: { status: 'libre', reservation: null } }
+      );
+      cleaned = result.modifiedCount;
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Réservations expirées nettoyées',
+      cleaned
+    });
+  } catch (error) {
+    console.error('❌ Erreur nettoyage:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Gestionnaire pour les routes non trouvées (doit être en dernier)
 app.use((req, res) => {
   res.status(404).json({
@@ -1203,7 +1455,7 @@ app.use((req, res) => {
     path: req.path,
     suggestion: isMongoConnected ? 
       'Vérifiez l\'URL de l\'API' : 
-      'MongoDB non disponible. Utilisez le serveur simple sur http://localhost:3001'
+      'MongoDB non disponible - Mode fallback actif'
   });
 });
 
@@ -1215,8 +1467,8 @@ async function startServer() {
     await connectDB();
     
     // Démarrer le serveur dans tous les cas
-    app.listen(PORT, () => {
-      console.log(`🚀 Serveur MongoDB démarré sur http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Serveur démarré sur http://0.0.0.0:${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
       
       if (isMongoConnected) {
@@ -1225,13 +1477,14 @@ async function startServer() {
         console.log(`👤 Users API: http://localhost:${PORT}/api/users`);
         console.log(`💳 Wallet API: http://localhost:${PORT}/api/transactions`);
       } else {
-        console.log('⚠️ Mode Fallback - Fonctionnalités limitées');
-        console.log('💡 Pour toutes les fonctionnalités, utilisez: http://localhost:3001');
+        console.log('⚠️ Mode Fallback - Fonctionnalités de base disponibles');
+        console.log('💡 Certaines fonctionnalités utilisent des données en mémoire');
       }
       
-      console.log(`🔑 Demo admin: admin@smartparking.com / admin123`);
-      console.log(`👤 Demo operator: operator@smartparking.com / operator123`);
-      console.log(`👤 Demo customer: customer@smartparking.com / customer123`);
+      console.log(`\n🔑 Comptes de démonstration:`);
+      console.log(`   Admin: admin@smartparking.com / admin123`);
+      console.log(`   Opérateur: operator@smartparking.com / operator123`);
+      console.log(`   Client: customer@smartparking.com / customer123`);
     });
   } catch (error) {
     console.error('❌ Erreur critique au démarrage:', error);
@@ -1265,406 +1518,6 @@ process.on('SIGTERM', async () => {
   }
   process.exit(0);
 });
-
-
-
-
-// simple server 
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Test users (no MongoDB required)
-const testUsers = [
-  {
-    _id: 'admin-001',
-    name: 'Administrateur Principal',
-    email: 'admin@smartparking.com',
-    password: 'admin123',
-    role: 'admin',
-    status: 'active',
-    walletBalance: 0
-  },
-  {
-    _id: 'operator-001',
-    name: 'Opérateur Parking',
-    email: 'operator@smartparking.com',
-    password: 'operator123',
-    role: 'operator',
-    status: 'active',
-    walletBalance: 0
-  },
-  {
-    _id: 'customer-001',
-    name: 'Client Test',
-    email: 'customer@smartparking.com',
-    password: 'customer123',
-    role: 'customer',
-    status: 'active',
-    walletBalance: 50.00
-  }
-];
-
-// Login endpoint
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    console.log('🔐 Tentative de connexion:', email);
-
-    if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email et mot de passe requis' 
-      });
-    }
-
-    const user = testUsers.find(u => u.email === email);
-    
-    if (!user) {
-      console.log('❌ Utilisateur non trouvé:', email);
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Email ou mot de passe incorrect' 
-      });
-    }
-
-    if (user.password !== password) {
-      console.log('❌ Mot de passe incorrect pour:', email);
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Email ou mot de passe incorrect' 
-      });
-    }
-
-    // Générer un token simple
-    const token = Buffer.from(JSON.stringify({
-      userId: user._id,
-      email: user.email,
-      role: user.role,
-      name: user.name
-    })).toString('base64');
-
-    console.log('✅ Connexion réussie pour:', email, '- Rôle:', user.role);
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        name: user.name,
-        walletBalance: user.walletBalance
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur connexion:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erreur serveur lors de la connexion' 
-    });
-  }
-});
-
-// Token verification endpoint
-app.get('/api/auth/verify', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
-      return res.status(401).json({ success: false, error: 'Token manquant' });
-    }
-
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
-    const user = testUsers.find(u => u._id === decoded.userId);
-
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Utilisateur non trouvé' });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        name: user.name,
-        walletBalance: user.walletBalance
-      }
-    });
-
-  } catch (error) {
-    res.status(401).json({ success: false, error: 'Token invalide' });
-  }
-});
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
-});
-
-// Mock endpoints for frontend compatibility
-
-// Sessions endpoints
-app.get('/api/sessions', (req, res) => {
-  res.json([]);
-});
-
-app.get('/api/sessions/active', (req, res) => {
-  res.json([]);
-});
-
-app.post('/api/sessions', (req, res) => {
-  const sessionId = Date.now().toString();
-  res.status(201).json({ _id: sessionId, ...req.body });
-});
-
-app.put('/api/sessions/:id', (req, res) => {
-  res.json({ success: true, message: 'Session updated' });
-});
-
-app.put('/api/sessions/:id/end', (req, res) => {
-  res.json({ success: true, message: 'Session ended' });
-});
-
-app.post('/api/sessions/:id/pay', (req, res) => {
-  res.json({ success: true, message: 'Payment processed' });
-});
-
-// Payments endpoints
-app.get('/api/payments', (req, res) => {
-  res.json([]);
-});
-
-app.post('/api/payments', (req, res) => {
-  const paymentId = Date.now().toString();
-  res.status(201).json({ _id: paymentId, ...req.body });
-});
-
-app.get('/api/payments/reports', (req, res) => {
-  res.json([]);
-});
-
-app.get('/api/payments/stats', (req, res) => {
-  res.json({ total: 0, count: 0 });
-});
-
-// Parking endpoints
-app.get('/api/parking/spaces', (req, res) => {
-  res.json([]);
-});
-
-app.get('/api/parking/spaces/:number', (req, res) => {
-  res.json({ number: req.params.number, status: 'libre' });
-});
-
-app.post('/api/parking/reserve', (req, res) => {
-  res.json({ success: true, message: 'Space reserved' });
-});
-
-app.post('/api/parking/occupy', (req, res) => {
-  res.json({ success: true, message: 'Space occupied' });
-});
-
-app.post('/api/parking/free', (req, res) => {
-  res.json({ success: true, message: 'Space freed' });
-});
-
-app.post('/api/parking/generate-spaces', (req, res) => {
-  const { totalSpaces } = req.body;
-  console.log(`🏗️ Génération de ${totalSpaces} places de parking`);
-  
-  // Simuler la génération de places
-  const spaces = [];
-  const zones = ['A', 'B', 'C', 'D'];
-  const types = ['voiture', 'moto', 'camion'];
-  
-  for (let i = 1; i <= totalSpaces; i++) {
-    const zone = zones[Math.floor(Math.random() * zones.length)];
-    const type = types[Math.floor(Math.random() * types.length)];
-    const number = `${zone}${String(i).padStart(3, '0')}`;
-    
-    spaces.push({
-      _id: i,
-      number,
-      zone,
-      type,
-      vehicleType: type,
-      status: 'libre',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-  }
-  
-  res.json({ 
-    success: true, 
-    message: `${totalSpaces} places créées avec succès`,
-    spaces: spaces.length,
-    data: spaces
-  });
-});
-
-app.get('/api/parking/spaces/:number', (req, res) => {
-  res.json({ 
-    number: req.params.number, 
-    status: 'libre',
-    zone: 'A',
-    type: 'voiture'
-  });
-});
-
-app.post('/api/parking/cleanup-expired', (req, res) => {
-  console.log('🧹 Nettoyage des réservations expirées');
-  res.json({ 
-    success: true, 
-    message: 'Réservations expirées nettoyées',
-    cleaned: 0
-  });
-});
-
-// Notifications endpoints
-app.get('/api/notifications', (req, res) => {
-  res.json([]);
-});
-
-app.post('/api/notifications', (req, res) => {
-  const notificationId = Date.now().toString();
-  res.status(201).json({ _id: notificationId, ...req.body });
-});
-
-app.get('/api/notifications/unread', (req, res) => {
-  res.json([]);
-});
-
-app.patch('/api/notifications/:id/read', (req, res) => {
-  res.json({ success: true, message: 'Notification marked as read' });
-});
-
-app.delete('/api/notifications/:id', (req, res) => {
-  res.json({ success: true, message: 'Notification deleted' });
-});
-
-// Alerts endpoints
-app.get('/api/alerts', (req, res) => {
-  res.json({ alerts: [] });
-});
-
-app.post('/api/alerts', (req, res) => {
-  const alertId = Date.now().toString();
-  res.status(201).json({ _id: alertId, ...req.body });
-});
-
-// Settings endpoints
-app.get('/api/settings', (req, res) => {
-  res.json({
-    success: true,
-    config: {
-      totalSpaces: 100,
-      baseRate: 2.5,
-      dynamicPricing: true
-    },
-    pricingRules: []
-  });
-});
-
-app.post('/api/settings', (req, res) => {
-  res.json({ success: true, message: 'Settings saved' });
-});
-
-app.get('/api/config/parking', (req, res) => {
-  res.json({
-    totalSpaces: 100,
-    baseRate: 2.5,
-    dynamicPricing: true
-  });
-});
-
-app.put('/api/config/parking', (req, res) => {
-  res.json({ success: true, message: 'Config updated' });
-});
-
-// Users endpoints
-app.get('/api/users', (req, res) => {
-  res.json(testUsers);
-});
-
-app.get('/api/users/:id', (req, res) => {
-  const user = testUsers.find(u => u._id === req.params.id);
-  if (user) {
-    res.json(user);
-  } else {
-    res.status(404).json({ error: 'User not found' });
-  }
-});
-
-app.post('/api/users', (req, res) => {
-  const userId = Date.now().toString();
-  const newUser = { _id: userId, ...req.body };
-  testUsers.push(newUser);
-  res.status(201).json(newUser);
-});
-
-app.put('/api/users/:id', (req, res) => {
-  res.json({ success: true, message: 'User updated' });
-});
-
-app.delete('/api/users/:id', (req, res) => {
-  res.json({ success: true, message: 'User deleted' });
-});
-
-// Transactions endpoints
-app.get('/api/transactions', (req, res) => {
-  res.json([]);
-});
-
-app.post('/api/transactions', (req, res) => {
-  const transactionId = Date.now().toString();
-  res.status(201).json({ _id: transactionId, ...req.body });
-});
-
-// Reports endpoints
-app.post('/api/reports/pdf', (req, res) => {
-  res.json({ success: true, message: 'PDF report generated' });
-});
-
-app.get('/api/reports/csv', (req, res) => {
-  res.json({ success: true, message: 'CSV report generated' });
-});
-
-// Stats endpoint
-app.get('/api/stats', (req, res) => {
-  res.json({
-    spaces: {
-      total: 100,
-      free: 80,
-      occupied: 15,
-      reserved: 3,
-      outOfService: 2,
-      occupancyRate: 15
-    },
-    sessions: {
-      today: 25,
-      active: 15
-    },
-    timestamp: new Date()
-  });
-});
-
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Serveur Express démarré sur http://0.0.0.0:${PORT}`);
-  console.log(`📡 Accessible sur le réseau local`);
-  console.log('📋 Utilisateurs de test disponibles:');
-  testUsers.forEach(user => {
-    console.log(`   - ${user.email} / ${user.password} (${user.role})`);
-  });
-});
-
 
 // Démarrer le serveur
 startServer();

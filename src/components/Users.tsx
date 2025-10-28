@@ -61,7 +61,7 @@ interface Notification {
 
 // Service dédié pour les appels API
 class UsersApiService {
-private baseUrl = 'http://localhost:3001/api';
+private baseUrl = 'http://localhost:3002/api';
  ;
 
   async fetchUsers(): Promise<User[]> {

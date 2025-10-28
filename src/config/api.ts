@@ -3,7 +3,7 @@ export const API_CONFIG = {
   // Use Vercel API in production, local server in development
   BASE_URL: window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')
     ? '/api' 
-    : (import.meta.env.VITE_API_URL || 'http://localhost:3001/api'),
+    : (import.meta.env.VITE_API_URL || 'http://localhost:3002/api'),
   
   // Endpoints
   ENDPOINTS: {
