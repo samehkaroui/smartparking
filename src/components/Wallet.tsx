@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Wallet as WalletIcon, Plus, Minus, History, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
+import { buildApiUrl, API_CONFIG } from '../config/api';
 
 interface Transaction {
   id: string;
@@ -32,14 +33,14 @@ const Wallet: React.FC = () => {
       setLoading(true);
       
       // Charger le solde de l'utilisateur
-      const userResponse = await fetch(`http://localhost:3002/api/users/${userData.id}`);
+      const userResponse = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.USERS.BY_ID(userData.id)));
       if (userResponse.ok) {
         const user = await userResponse.json();
         setBalance(user.walletBalance || 0);
       }
 
       // Charger les transactions de l'utilisateur
-      const transactionsResponse = await fetch(`http://localhost:3002/api/transactions?userId=${userData.id}`);
+      const transactionsResponse = await fetch(buildApiUrl(`${API_CONFIG.ENDPOINTS.TRANSACTIONS.BASE}?userId=${userData.id}`));
       if (transactionsResponse.ok) {
         const transactionsData = await transactionsResponse.json();
         // Trier par date décroissante
@@ -79,7 +80,7 @@ const Wallet: React.FC = () => {
       };
 
       // Mettre à jour le solde de l'utilisateur
-      await fetch(`http://localhost:3002/api/users/${userData.id}`, {
+      await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.USERS.BY_ID(userData.id)), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -88,7 +89,7 @@ const Wallet: React.FC = () => {
       });
 
       // Créer la transaction
-      await fetch('http://localhost:3002/api/transactions', {
+      await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.TRANSACTIONS.BASE), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

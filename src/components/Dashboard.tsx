@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { buildApiUrl, API_CONFIG } from '../config/api';
 import { 
   Car, 
   TrendingUp, 
@@ -104,15 +105,15 @@ const Dashboard: React.FC = () => {
       setLoading(true);
 
       // Charger les statistiques globales
-      const statsResponse = await fetch('http://localhost:3002/api/stats');
+      const statsResponse = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.STATS));
       const statsData: StatsResponse = await statsResponse.json();
 
       // Charger les sessions actives
-      const sessionsResponse = await fetch('http://localhost:3002/api/sessions?status=active&limit=10');
+      const sessionsResponse = await fetch(buildApiUrl(`${API_CONFIG.ENDPOINTS.SESSIONS.ACTIVE}?limit=10`));
       const sessionsData = await sessionsResponse.json();
 
       // Charger les alertes récentes
-      const alertsResponse = await fetch('http://localhost:3002/api/alerts?limit=3');
+      const alertsResponse = await fetch(buildApiUrl(`${API_CONFIG.ENDPOINTS.ALERTS.BASE}?limit=3`));
       const alertsData = await alertsResponse.json();
 
       // Calculer les revenus du jour (à adapter selon votre logique)

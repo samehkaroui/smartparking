@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { API_CONFIG } from '../config/api';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -29,11 +30,7 @@ interface Payment {
 }
 
 // Configuration robuste avec fallbacks
-const getApiBaseUrl = (): string => {
-  return 'http://localhost:3002/api';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
 // Service dédié pour les appels API - CORRIGÉ
 class ApiService {

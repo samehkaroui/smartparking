@@ -1,9 +1,7 @@
 // Centralized API configuration
 export const API_CONFIG = {
-  // Use Vercel API in production, local server in development
-  BASE_URL: window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')
-    ? '/api' 
-    : (import.meta.env.VITE_API_URL || 'http://localhost:3002/api'),
+  // Use environment variable or default to production server
+  BASE_URL: import.meta.env.VITE_API_URL || 'https://smartparking-3.onrender.com/api',
   
   // Endpoints
   ENDPOINTS: {

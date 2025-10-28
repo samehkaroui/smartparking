@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Car, MapPin, Loader2, Shield, UserCog, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { buildApiUrl, API_CONFIG } from "../config/api";
 
 interface User {
   _id: string;
@@ -28,7 +29,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
     try {
     // Utilisez l'API Express server
-    const res = await fetch("http://localhost:3002/api/auth/login", {
+    const res = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.AUTH.LOGIN), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })

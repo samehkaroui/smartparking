@@ -13,6 +13,7 @@ import {
   X,
   Filter
 } from 'lucide-react';
+import { buildApiUrl, API_CONFIG } from '../config/api';
 
 interface Notification {
   id: string;
@@ -50,13 +51,13 @@ const Notifications: React.FC = () => {
   // Service API pour MongoDB
   const ApiService = {
     async getNotifications(): Promise<Notification[]> {
-      const response = await fetch('http://localhost:3002/api/alerts');
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.ALERTS.BASE));
       const data = await response.json();
       return data.alerts || [];
     },
 
     async markAsRead(notificationId: string): Promise<void> {
-      await fetch(`http://localhost:3002/api/alerts/${notificationId}/read`, {
+      await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.ALERTS.MARK_READ(notificationId)), {
         method: 'PUT'
       });
     },
@@ -64,7 +65,7 @@ const Notifications: React.FC = () => {
     async markAllAsRead(notificationIds: string[]): Promise<void> {
       await Promise.all(
         notificationIds.map(id => 
-          fetch(`http://localhost:3002/api/alerts/${id}/read`, {
+          fetch(buildApiUrl(API_CONFIG.ENDPOINTS.ALERTS.MARK_READ(id)), {
             method: 'PUT'
           })
         )
@@ -72,7 +73,7 @@ const Notifications: React.FC = () => {
     },
 
     async deleteNotification(notificationId: string): Promise<void> {
-      await fetch(`http://localhost:3002/api/alerts/${notificationId}`, {
+      await fetch(buildApiUrl(`/alerts/${notificationId}`), {
         method: 'DELETE'
       });
     },
@@ -80,7 +81,7 @@ const Notifications: React.FC = () => {
     async deleteMultipleNotifications(notificationIds: string[]): Promise<void> {
       await Promise.all(
         notificationIds.map(id => 
-          fetch(`http://localhost:3002/api/alerts/${id}`, {
+          fetch(buildApiUrl(`/alerts/${id}`), {
             method: 'DELETE'
           })
         )

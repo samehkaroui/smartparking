@@ -31,3 +31,5 @@ netlify/functions/node_modules
 # Local development
 server-corrected.js
 server-simple.js
+
+.vercel

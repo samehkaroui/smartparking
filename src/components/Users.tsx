@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_CONFIG } from '../config/api';
 import { 
   Users as UsersIcon, 
   UserPlus, 
@@ -61,8 +62,7 @@ interface Notification {
 
 // Service dédié pour les appels API
 class UsersApiService {
-private baseUrl = 'http://localhost:3002/api';
- ;
+private baseUrl = API_CONFIG.BASE_URL;
 
   async fetchUsers(): Promise<User[]> {
     try {

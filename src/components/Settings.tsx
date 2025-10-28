@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { API_CONFIG } from '../config/api';
 import { Save, AlertCircle, DollarSign, Clock, Camera, Wifi, Trash2, Plus } from 'lucide-react';
 import { ParkingConfig, PricingRule } from '../types/parking';
 
 // Service dédié pour les appels API
 class SettingsApiService {
-  private baseUrl = 'http://localhost:3002/api';
+  private baseUrl = API_CONFIG.BASE_URL;
 
   async fetchConfig(): Promise<{ config: ParkingConfig; pricingRules: PricingRule[] }> {
     try {

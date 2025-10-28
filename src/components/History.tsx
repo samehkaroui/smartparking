@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { buildApiUrl, API_CONFIG } from '../config/api';
 import { History as HistoryIcon, Car, CreditCard, MapPin, Filter, Download, RefreshCw, Clock, Calendar } from 'lucide-react';
 
 interface Session {
@@ -45,7 +46,7 @@ const History: React.FC = () => {
       setLoading(true);
 
       // Charger les sessions de l'utilisateur
-      const sessionsResponse = await fetch(`http://localhost:3002/api/sessions?userId=${userData.id}`);
+      const sessionsResponse = await fetch(buildApiUrl(`${API_CONFIG.ENDPOINTS.SESSIONS.BASE}?userId=${userData.id}`));
       if (sessionsResponse.ok) {
         const sessionsData = await sessionsResponse.json();
         // Trier par date décroissante
@@ -57,7 +58,7 @@ const History: React.FC = () => {
       }
 
       // Charger les transactions de l'utilisateur
-      const transactionsResponse = await fetch(`http://localhost:3002/api/transactions?userId=${userData.id}`);
+      const transactionsResponse = await fetch(buildApiUrl(`${API_CONFIG.ENDPOINTS.TRANSACTIONS.BASE}?userId=${userData.id}`));
       if (transactionsResponse.ok) {
         const transactionsData = await transactionsResponse.json();
         // Trier par date décroissante

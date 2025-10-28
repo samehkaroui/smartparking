@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ParkingSpace, ParkingConfig, ParkingSession } from '../types/parking';
 import { Car, Truck, Bike, AlertCircle, RefreshCw, Clock, User } from 'lucide-react';
+import { buildApiUrl, API_CONFIG } from '../config/api';
 
 const ParkingMap: React.FC = () => {
   const [selectedSpace, setSelectedSpace] = useState<ParkingSpace | null>(null);
@@ -24,7 +25,7 @@ const ParkingMap: React.FC = () => {
   const ApiService = {
     // Parking Spaces
     async getParkingSpaces(): Promise<ParkingSpace[]> {
-      const response = await fetch('http://localhost:3002/api/parking/spaces');
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.SPACES));
       if (!response.ok) {
         throw new Error(`Erreur HTTP ${response.status}: ${response.statusText}`);
       }
@@ -32,7 +33,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async updateParkingSpace(spaceNumber: string, updates: any): Promise<void> {
-      const response = await fetch(`http://localhost:3002/api/parking/spaces/${spaceNumber}`, {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.SPACE_BY_NUMBER(spaceNumber)), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -44,7 +45,7 @@ const ParkingMap: React.FC = () => {
 
     // Sessions
     async getActiveSessions(): Promise<ParkingSession[]> {
-      const response = await fetch('http://localhost:3002/api/sessions?status=active');
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.SESSIONS.ACTIVE));
       if (!response.ok) {
         throw new Error(`Erreur HTTP ${response.status}`);
       }
@@ -54,7 +55,7 @@ const ParkingMap: React.FC = () => {
 
     // Réservations
     async reserveSpace(spaceNumber: string, plate: string, vehicleType: string): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/reserve', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.RESERVE), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceNumber, plate, vehicleType })
@@ -66,7 +67,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async cancelReservation(spaceNumber: string): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/cancel-reservation', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.CANCEL_RESERVATION), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceNumber })
@@ -77,7 +78,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async setOutOfService(spaceNumber: string): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/out-of-service', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.OUT_OF_SERVICE), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceNumber })
@@ -88,7 +89,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async setInService(spaceNumber: string): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/in-service', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.IN_SERVICE), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceNumber })
@@ -99,7 +100,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async occupySpace(spaceNumber: string, sessionId: string, plate: string, vehicleType: string): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/occupy', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.OCCUPY), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceNumber, sessionId, plate, vehicleType })
@@ -110,7 +111,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async freeSpace(spaceNumber: string, sessionId: string): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/free', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.FREE), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceNumber, sessionId })
@@ -121,7 +122,7 @@ const ParkingMap: React.FC = () => {
     },
 
     async cleanupExpiredReservations(): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/cleanup-expired', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.CLEANUP_EXPIRED), {
         method: 'POST'
       });
       if (!response.ok) {
@@ -131,7 +132,7 @@ const ParkingMap: React.FC = () => {
 
     // Configuration - Récupérer les settings complets
     async getParkingConfig(): Promise<ParkingConfig> {
-      const response = await fetch('http://localhost:3002/api/settings');
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.SETTINGS.BASE));
       if (!response.ok) {
         throw new Error(`Erreur HTTP ${response.status}`);
       }
@@ -141,7 +142,7 @@ const ParkingMap: React.FC = () => {
 
     // Générer les places avec le totalSpaces de la configuration
     async generateParkingSpaces(totalSpaces: number): Promise<void> {
-      const response = await fetch('http://localhost:3002/api/parking/generate-spaces', {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PARKING.GENERATE_SPACES), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ totalSpaces })
