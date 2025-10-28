@@ -8,10 +8,6 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Accessible from network
     port: 5174,
-    allowedHosts: [
-      'smartparkingf.onrender.com',
-      'localhost',
-    ],
   },
   
   optimizeDeps: {
